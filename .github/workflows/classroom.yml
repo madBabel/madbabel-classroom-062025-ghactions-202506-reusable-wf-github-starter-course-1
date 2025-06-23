@@ -1,67 +1,56 @@
-name: 'Autograding: Reusable Workflows'
+name: Autograding - Reusable Workflow Exercise
 on:
-  workflow_dispatch: null
+  push:
+  workflow_dispatch:
+
 permissions:
   checks: write
   actions: read
   contents: read
+
 jobs:
-  check-caller:
+  check-workflow-file:
     runs-on: ubuntu-latest
     steps:
-    - name: Check if caller-workflow exists
-      run: test -f .github/workflows/caller-workflow.yml
-    - name: Check if reusable workflow exists
-      run: test -f .github/workflows/o-workflow.yml
-    - name: Verify workflow_call trigger
-      run: grep -q 'workflow_call:' .github/workflows/o-workflow.yml
-    - name: Verify dry-run input in o-workflow
-      run: grep -q 'dry-run:' .github/workflows/o-workflow.yml
-    - name: Verify deploy-log output in o-workflow
-      run: grep -q 'deploy-log:' .github/workflows/o-workflow.yml
-  autograding-reporter:
-    needs:
-    - check-caller
-    runs-on: ubuntu-latest
-    if: ${{ always() }}
-    steps:
-    - name: Test 1 - Workflow exists
-      uses: classroom-resources/autograding-io-grader@v1
-      id: test1
-      with:
-        test-name: caller-workflow.yml and o-workflow.yml exist
-        command: echo ${{ needs.check-caller.result }}
-        input: ''
-        expected-output: success
-        comparison-method: exact
-        max-score: 20
-    - name: Test 2 - workflow_call enabled
-      uses: classroom-resources/autograding-io-grader@v1
-      id: test2
-      with:
-        test-name: workflow_call is declared
-        command: grep -q 'workflow_call:' .github/workflows/o-workflow.yml && echo
-          success || echo fail
-        input: ''
-        expected-output: success
-        comparison-method: exact
-        max-score: 20
-    - name: Test 3 - deploy-log output present
-      uses: classroom-resources/autograding-io-grader@v1
-      id: test3
-      with:
-        test-name: deploy-log output defined
-        command: grep -q 'deploy-log:' .github/workflows/o-workflow.yml && echo success
-          || echo fail
-        input: ''
-        expected-output: success
-        comparison-method: exact
-        max-score: 20
-    - name: Reporter
-      uses: classroom-resources/autograding-grading-reporter@v1
-      with:
-        runners: test1,test2,test3
-      env:
-        TEST1_RESULTS: ${{ steps.test1.outputs.result }}
-        TEST2_RESULTS: ${{ steps.test2.outputs.result }}
-        TEST3_RESULTS: ${{ steps.test3.outputs.result }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify reusable workflow exists
+        run: |
+          if [[ ! -f .github/workflows/o-workflow.yml ]]; then
+            echo "❌ Reusable workflow 'o-workflow.yml' not found"
+            exit 1
+          fi
+          echo "✅ Reusable workflow exists"
+
+      - name: Verify main workflow exists
+        run: |
+          if [[ ! -f .github/workflows/main-deploy.yml ]]; then
+            echo "❌ Main workflow 'main-deploy.yml' not found"
+            exit 1
+          fi
+          echo "✅ Main workflow exists"
+
+      - name: Check workflow_call declaration
+        run: |
+          if ! grep -q "workflow_call" .github/workflows/o-workflow.yml; then
+            echo "❌ Missing 'workflow_call' in o-workflow.yml"
+            exit 1
+          fi
+          echo "✅ 'workflow_call' declared"
+
+      - name: Check call to reusable workflow
+        run: |
+          if ! grep -q "uses: ./.github/workflows/o-workflow.yml" .github/workflows/main-deploy.yml; then
+            echo "❌ Main workflow does not call the reusable workflow"
+            exit 1
+          fi
+          echo "✅ Reusable workflow is called from main"
+
+      - name: Check deploy job conditional logic
+        run: |
+          if ! grep -q "if:.*needs.call-build.outputs.build-status == 'success'" .github/workflows/main-deploy.yml; then
+            echo "❌ Missing or incorrect conditional logic in deploy job"
+            exit 1
+          fi
+          echo "✅ Conditional deploy logic is present"
